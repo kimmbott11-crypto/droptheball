@@ -57,7 +57,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showPlayers) {
+            .fullScreenCover(isPresented: $showPlayers) {
                 NavigationStack {
                     PlayerListView(manager: manager)
                         .navigationTitle("플레이어 관리")

@@ -54,10 +54,10 @@ input,select{font-family:inherit}
 .sitter-chip{font-size:12px;font-weight:500;padding:3px 7px;background:#f0f0f0;border-radius:5px;color:#333}
 
 /* Modal overlay */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:flex-end;justify-content:center}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:flex-start;justify-content:center;padding-top:40px}
 .modal-overlay.show{display:flex}
-.modal{background:#fff;border-radius:16px 16px 0 0;width:100%;max-width:500px;max-height:90vh;display:flex;flex-direction:column;animation:slideUp .25s ease}
-@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.modal{background:#fff;border-radius:0 0 16px 16px;width:100%;max-width:500px;max-height:85vh;display:flex;flex-direction:column;animation:slideDown .25s ease}
+@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
 .modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px;border-bottom:1px solid #eee}
 .modal-header h2{font-size:17px;font-weight:700}
 .modal-close{background:none;border:none;font-size:15px;color:var(--green);font-weight:600}
@@ -313,9 +313,11 @@ function mixedArrange(players){
 function generateSlot(idx){
   const slot=state.slots[idx];
   const avail=state.players.filter(p=>isAvailable(p,slot.time));
-  if(avail.length<4){showToast(slot.time+' 가능 인원 부족 ('+avail.length+'명)');return;}
-  const nc=Math.min(state.courtCount,Math.floor(avail.length/4));
-  const np=nc*4;
+  if(avail.length<2){showToast(slot.time+' 가능 인원 부족 ('+avail.length+'명)');return;}
+  const dc=Math.min(state.courtCount,Math.floor(avail.length/4));
+  const rem=avail.length-dc*4;
+  const sc=(dc<state.courtCount&&rem>=2)?1:0;
+  const np=dc*4+sc*2;
   const sorted=[...avail].sort((a,b)=>{
     if(a.satOutLast&&!b.satOutLast)return -1;if(!a.satOutLast&&b.satOutLast)return 1;return a.playCount-b.playCount;
   });
@@ -324,21 +326,24 @@ function generateSlot(idx){
   avail.forEach(p=>{const sp=state.players.find(x=>x.id===p.id);if(sp)sp.satOutLast=!pids.has(p.id);});
   const arr=mixedArrange(playing);
   const courts=[];
-  for(let i=0;i<nc;i++)courts.push({team1:[arr[i*4].id,arr[i*4+1].id],team2:[arr[i*4+2].id,arr[i*4+3].id]});
+  for(let i=0;i<dc;i++)courts.push({team1:[arr[i*4].id,arr[i*4+1].id],team2:[arr[i*4+2].id,arr[i*4+3].id]});
+  if(sc>0){const b=dc*4;courts.push({team1:[arr[b].id],team2:[arr[b+1].id]});}
   slot.courts=courts;slot.sitters=sitters.map(p=>p.id);
   saveState();renderAll();showToast(slot.time+' 배정 완료');
 }
 
 function generateAll(){
   const present=state.players.filter(p=>p.present);
-  if(present.length<4){showToast('최소 4명이 출석해야 해요');return;}
+  if(present.length<2){showToast('최소 2명이 출석해야 해요');return;}
   state.players.forEach(p=>{p.satOutLast=false;});
   let gen=0;
   state.slots.forEach((slot,i)=>{
     const avail=state.players.filter(p=>isAvailable(p,slot.time));
-    if(avail.length<4)return;
-    const nc=Math.min(state.courtCount,Math.floor(avail.length/4));
-    const np=nc*4;
+    if(avail.length<2)return;
+    const dc=Math.min(state.courtCount,Math.floor(avail.length/4));
+    const rem=avail.length-dc*4;
+    const sc=(dc<state.courtCount&&rem>=2)?1:0;
+    const np=dc*4+sc*2;
     const sorted=[...avail].sort((a,b)=>{
       if(a.satOutLast&&!b.satOutLast)return -1;if(!a.satOutLast&&b.satOutLast)return 1;return a.playCount-b.playCount;
     });
@@ -348,7 +353,8 @@ function generateAll(){
     playing.forEach(p=>{const sp=state.players.find(x=>x.id===p.id);if(sp)sp.playCount++;});
     const arr=mixedArrange(playing);
     const courts=[];
-    for(let j=0;j<nc;j++)courts.push({team1:[arr[j*4].id,arr[j*4+1].id],team2:[arr[j*4+2].id,arr[j*4+3].id]});
+    for(let j=0;j<dc;j++)courts.push({team1:[arr[j*4].id,arr[j*4+1].id],team2:[arr[j*4+2].id,arr[j*4+3].id]});
+    if(sc>0){const b=dc*4;courts.push({team1:[arr[b].id],team2:[arr[b+1].id]});}
     slot.courts=courts;slot.sitters=sitters.map(p=>p.id);gen++;
   });
   saveState();renderAll();showToast(gen+'개 매치 전체 배정 완료!');
@@ -374,7 +380,7 @@ function renderSlots(){
     if(slot.courts){
       body=slot.courts.map((c,ci)=>`
         <div class="court-row">
-          <span class="court-label ${courtColorClasses[ci]}">${courtNames[ci]}</span>
+          <span class="court-label ${courtColorClasses[ci]}">${courtNames[ci]}${(c.team1.length===1&&c.team2.length===1)?' 단식':''}</span>
           <div class="team team1">${c.team1.map(id=>`<span class="player-chip">${getName(id)}</span>`).join('')}</div>
           <span class="vs">vs</span>
           <div class="team team2">${c.team2.map(id=>`<span class="player-chip">${getName(id)}</span>`).join('')}</div>

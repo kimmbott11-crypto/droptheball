@@ -213,19 +213,22 @@ class MatchManager {
         guard index < slots.count else { return }
         let slot = slots[index]
         let available = availablePlayers(forSlotTime: slot.time)
-        guard available.count >= 4 else {
+        guard available.count >= 2 else {
             showToast("\(slot.time)에 가능한 인원이 부족해요 (\(available.count)명)")
             return
         }
-        
-        let numCourts = min(selectedCourtCount, available.count / 4)
-        let numPlaying = numCourts * 4
         
         let sorted = available.sorted { a, b in
             if a.satOutLast && !b.satOutLast { return true }
             if !a.satOutLast && b.satOutLast { return false }
             return a.playCount < b.playCount
         }
+        
+        // Doubles courts first, then singles if remainder >= 2
+        let doublesCourts = min(selectedCourtCount, available.count / 4)
+        let remainder = available.count - doublesCourts * 4
+        let singlesCount = (doublesCourts < selectedCourtCount && remainder >= 2) ? 1 : 0
+        let numPlaying = doublesCourts * 4 + singlesCount * 2
         
         let playing = Array(sorted.prefix(numPlaying))
         let sitters = Array(sorted.dropFirst(numPlaying))
@@ -239,10 +242,17 @@ class MatchManager {
         
         let arranged = mixedArrange(playing)
         var courts: [Court] = []
-        for i in 0..<numCourts {
+        for i in 0..<doublesCourts {
             courts.append(Court(
                 team1: [arranged[i * 4].id, arranged[i * 4 + 1].id],
                 team2: [arranged[i * 4 + 2].id, arranged[i * 4 + 3].id]
+            ))
+        }
+        if singlesCount > 0 {
+            let base = doublesCourts * 4
+            courts.append(Court(
+                team1: [arranged[base].id],
+                team2: [arranged[base + 1].id]
             ))
         }
         
@@ -253,8 +263,8 @@ class MatchManager {
     }
     
     func generateAllSlots() {
-        guard presentPlayers.count >= 4 else {
-            showToast("최소 4명이 출석해야 해요")
+        guard presentPlayers.count >= 2 else {
+            showToast("최소 2명이 출석해야 해요")
             return
         }
         for i in players.indices {
@@ -272,16 +282,18 @@ class MatchManager {
     private func internalGenerate(index: Int) {
         let slot = slots[index]
         let available = availablePlayers(forSlotTime: slot.time)
-        guard available.count >= 4 else { return }
-        
-        let numCourts = min(selectedCourtCount, available.count / 4)
-        let numPlaying = numCourts * 4
+        guard available.count >= 2 else { return }
         
         let sorted = available.sorted { a, b in
             if a.satOutLast && !b.satOutLast { return true }
             if !a.satOutLast && b.satOutLast { return false }
             return a.playCount < b.playCount
         }
+        
+        let doublesCourts = min(selectedCourtCount, available.count / 4)
+        let remainder = available.count - doublesCourts * 4
+        let singlesCount = (doublesCourts < selectedCourtCount && remainder >= 2) ? 1 : 0
+        let numPlaying = doublesCourts * 4 + singlesCount * 2
         
         let playing = Array(sorted.prefix(numPlaying))
         let sitters = Array(sorted.dropFirst(numPlaying))
@@ -300,10 +312,17 @@ class MatchManager {
         
         let arranged = mixedArrange(playing)
         var courts: [Court] = []
-        for i in 0..<numCourts {
+        for i in 0..<doublesCourts {
             courts.append(Court(
                 team1: [arranged[i * 4].id, arranged[i * 4 + 1].id],
                 team2: [arranged[i * 4 + 2].id, arranged[i * 4 + 3].id]
+            ))
+        }
+        if singlesCount > 0 {
+            let base = doublesCourts * 4
+            courts.append(Court(
+                team1: [arranged[base].id],
+                team2: [arranged[base + 1].id]
             ))
         }
         

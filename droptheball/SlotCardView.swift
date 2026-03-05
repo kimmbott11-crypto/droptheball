@@ -97,9 +97,10 @@ struct SlotCardView: View {
     
     private func courtRow(court: Court, courtIndex: Int) -> some View {
         let color = courtColors[courtIndex % courtColors.count]
+        let isSingles = court.team1.count == 1 && court.team2.count == 1
         return HStack(spacing: 5) {
             // Court label with color
-            Text("코트\(courtIndex + 1)")
+            Text(isSingles ? "코트\(courtIndex + 1) 단식" : "코트\(courtIndex + 1)")
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 6)
