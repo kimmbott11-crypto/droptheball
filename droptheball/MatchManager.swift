@@ -5,6 +5,7 @@
 
 import SwiftUI
 
+@MainActor
 @Observable
 class MatchManager {
     // Configurable time range

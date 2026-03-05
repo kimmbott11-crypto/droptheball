@@ -57,7 +57,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .fullScreenCover(isPresented: $showPlayers) {
+            .sheet(isPresented: $showPlayers) {
                 NavigationStack {
                     PlayerListView(manager: manager)
                         .navigationTitle("플레이어 관리")
@@ -68,6 +68,8 @@ struct ContentView: View {
                             }
                         }
                 }
+                .presentationDetents([.large])
+                .interactiveDismissDisabled(false)
             }
             .sheet(isPresented: $showSettings) {
                 settingsSheet
