@@ -116,7 +116,7 @@ struct PlayerListView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.green)
                 Spacer()
-                Text("탭: 출석 토글 · 스와이프: 삭제")
+                Text("탭: 출석 토글")
                     .font(.system(size: 10))
                     .foregroundStyle(.quaternary)
             }
