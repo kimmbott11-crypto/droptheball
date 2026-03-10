@@ -45,13 +45,15 @@ input,select{font-family:inherit}
 .court-label.c3{background:var(--teal)}
 .court-label.c4{background:var(--pink)}
 .team{display:flex;gap:2px;flex:1}
-.player-chip{flex:1;text-align:center;font-size:13px;font-weight:600;padding:4px 6px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.player-chip{flex:1;text-align:center;font-size:13px;font-weight:600;padding:4px 6px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;-webkit-tap-highlight-color:rgba(0,0,0,.05)}
 .team1 .player-chip{background:rgba(59,130,246,.08);color:var(--blue)}
 .team2 .player-chip{background:rgba(168,85,247,.08);color:var(--purple)}
+.player-chip.swap-sel{outline:2px solid var(--orange);background:rgba(249,115,22,.15)!important;color:var(--orange)!important}
 .court-row .vs{font-size:10px;font-weight:800;color:#999}
 .sitters-row{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:4px}
 .sitters-row .label{font-size:11px;font-weight:700;color:#000}
-.sitter-chip{font-size:12px;font-weight:500;padding:3px 7px;background:#f0f0f0;border-radius:5px;color:#333}
+.sitter-chip{font-size:12px;font-weight:500;padding:3px 7px;background:#f0f0f0;border-radius:5px;color:#333;cursor:pointer}
+.sitter-chip.swap-sel{outline:2px solid var(--orange);background:rgba(249,115,22,.15)!important;color:var(--orange)!important}
 
 /* Modal overlay */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:flex-start;justify-content:center;padding-top:40px}
@@ -118,6 +120,13 @@ input,select{font-family:inherit}
 .summary-table .team-name.t2{color:var(--purple)}
 .summary-table .vs-text{font-size:9px;font-weight:800;color:#ccc}
 .summary-table .wait-name{font-size:12px;font-weight:700;color:#000}
+
+/* Player count summary */
+.count-grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.count-chip{background:#f5f5f5;border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:6px;font-size:13px}
+.count-chip .cname{font-weight:700}
+.count-chip .cgames{font-weight:800;color:var(--green)}
+.count-chip .cgames.zero{color:#ccc}
 
 /* Toast */
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(10px);background:rgba(0,0,0,.8);color:#fff;padding:10px 20px;border-radius:20px;font-size:14px;font-weight:600;opacity:0;transition:all .25s;pointer-events:none;z-index:999;white-space:nowrap}
@@ -220,6 +229,7 @@ input,select{font-family:inherit}
 <script>
 // State
 let state = loadState();
+let swapSel = null; // {slotIdx, type:'court'|'sitter', courtIdx?, teamIdx?, posIdx?, sitterIdx?, key}
 
 function defaultState(){
   return {players:[],slots:[],nextId:1,startHour:19,startMinute:0,endHour:22,endMinute:0,courtCount:3};
@@ -262,6 +272,20 @@ function isAvailable(p,slotTime){
 
 function getName(id){const p=state.players.find(x=>x.id===id);return p?p.name:'?'}
 
+// ─── 게임수: 슬롯 데이터에서 동적으로 집계 ───────────────────────────────
+function updatePlayCounts(){
+  state.players.forEach(p=>p.playCount=0);
+  state.slots.forEach(s=>{
+    if(!s.courts)return;
+    s.courts.forEach(c=>{
+      [...c.team1,...c.team2].forEach(id=>{
+        const p=state.players.find(x=>x.id===id);
+        if(p)p.playCount++;
+      });
+    });
+  });
+}
+
 // Player management
 function addPlayer(){
   const inp=document.getElementById('player-input');
@@ -300,7 +324,7 @@ function updateDepartTime(id,val){
   p.departTime=val;saveState();renderAll();
 }
 
-// Match generation
+// ─── Match generation ────────────────────────────────────────────────────────
 function mixedArrange(players){
   const sorted=[...players].sort((a,b)=>a.playCount-b.playCount);
   const result=[];let lo=0,hi=sorted.length-1;
@@ -312,6 +336,11 @@ function mixedArrange(players){
 
 function generateSlot(idx){
   const slot=state.slots[idx];
+  // 이 슬롯 초기화 후 다른 슬롯 기준으로 게임수 재계산
+  slot.courts=null;slot.sitters=null;
+  updatePlayCounts();
+  swapSel=null;
+
   const avail=state.players.filter(p=>isAvailable(p,slot.time));
   if(avail.length<2){showToast(slot.time+' 가능 인원 부족 ('+avail.length+'명)');return;}
   const dc=Math.min(state.courtCount,Math.floor(avail.length/4));
@@ -329,13 +358,17 @@ function generateSlot(idx){
   for(let i=0;i<dc;i++)courts.push({team1:[arr[i*4].id,arr[i*4+1].id],team2:[arr[i*4+2].id,arr[i*4+3].id]});
   if(sc>0){const b=dc*4;courts.push({team1:[arr[b].id],team2:[arr[b+1].id]});}
   slot.courts=courts;slot.sitters=sitters.map(p=>p.id);
+  updatePlayCounts();
   saveState();renderAll();showToast(slot.time+' 배정 완료');
 }
 
 function generateAll(){
   const present=state.players.filter(p=>p.present);
   if(present.length<2){showToast('최소 2명이 출석해야 해요');return;}
-  state.players.forEach(p=>{p.satOutLast=false;});
+  // 전체 배정 시 슬롯·게임수 리셋
+  state.slots.forEach(s=>{s.courts=null;s.sitters=null;});
+  state.players.forEach(p=>{p.satOutLast=false;p.playCount=0;});
+  swapSel=null;
   let gen=0;
   state.slots.forEach((slot,i)=>{
     const avail=state.players.filter(p=>isAvailable(p,slot.time));
@@ -357,10 +390,62 @@ function generateAll(){
     if(sc>0){const b=dc*4;courts.push({team1:[arr[b].id],team2:[arr[b+1].id]});}
     slot.courts=courts;slot.sitters=sitters.map(p=>p.id);gen++;
   });
+  updatePlayCounts();
   saveState();renderAll();showToast(gen+'개 매치 전체 배정 완료!');
 }
 
-// Rendering
+// ─── 수동 교체 (탭-투-스왑) ───────────────────────────────────────────────
+function pickSwap(slotIdx,courtIdx,teamIdx,posIdx){
+  const key='c-'+slotIdx+'-'+courtIdx+'-'+teamIdx+'-'+posIdx;
+  if(!swapSel){
+    swapSel={slotIdx,type:'court',courtIdx,teamIdx,posIdx,key};
+    renderSlots();showToast('교체할 다른 선수를 선택하세요');
+    return;
+  }
+  if(swapSel.key===key){swapSel=null;renderSlots();return;}
+  if(swapSel.slotIdx!==slotIdx){swapSel=null;renderSlots();return;}
+  const slot=state.slots[slotIdx];
+  const teamKey=teamIdx===0?'team1':'team2';
+  const id2=slot.courts[courtIdx][teamKey][posIdx];
+  if(swapSel.type==='court'){
+    const swapTeamKey=swapSel.teamIdx===0?'team1':'team2';
+    const id1=slot.courts[swapSel.courtIdx][swapTeamKey][swapSel.posIdx];
+    slot.courts[swapSel.courtIdx][swapTeamKey][swapSel.posIdx]=id2;
+    slot.courts[courtIdx][teamKey][posIdx]=id1;
+  }else{
+    // sitter → court
+    const id1=slot.sitters[swapSel.sitterIdx];
+    slot.sitters[swapSel.sitterIdx]=id2;
+    slot.courts[courtIdx][teamKey][posIdx]=id1;
+    updatePlayCounts();
+  }
+  swapSel=null;saveState();renderAll();showToast('선수 교체 완료');
+}
+
+function pickSitterSwap(slotIdx,sitterIdx){
+  const key='s-'+slotIdx+'-'+sitterIdx;
+  if(!swapSel){
+    swapSel={slotIdx,type:'sitter',sitterIdx,key};
+    renderSlots();showToast('교체할 코트 선수를 선택하세요');
+    return;
+  }
+  if(swapSel.key===key){swapSel=null;renderSlots();return;}
+  if(swapSel.slotIdx!==slotIdx){swapSel=null;renderSlots();return;}
+  const slot=state.slots[slotIdx];
+  if(swapSel.type==='sitter'){swapSel=null;renderSlots();return;}
+  // court → sitter
+  const swapTeamKey=swapSel.teamIdx===0?'team1':'team2';
+  const id1=slot.courts[swapSel.courtIdx][swapTeamKey][swapSel.posIdx];
+  const id2=slot.sitters[sitterIdx];
+  slot.courts[swapSel.courtIdx][swapTeamKey][swapSel.posIdx]=id2;
+  slot.sitters[sitterIdx]=id1;
+  updatePlayCounts();
+  swapSel=null;saveState();renderAll();showToast('선수 교체 완료');
+}
+
+function cancelSwap(){swapSel=null;renderSlots();}
+
+// ─── Rendering ───────────────────────────────────────────────────────────────
 function renderAll(){renderSlots();renderPlayers();updateBadge();}
 
 function updateBadge(){
@@ -376,22 +461,35 @@ function renderSlots(){
 
   container.innerHTML=state.slots.map((slot,idx)=>{
     const avail=state.players.filter(p=>isAvailable(p,slot.time));
+    const isSwapActive=swapSel&&swapSel.slotIdx===idx;
     let body='';
     if(slot.courts){
       body=slot.courts.map((c,ci)=>`
         <div class="court-row">
           <span class="court-label ${courtColorClasses[ci]}">${courtNames[ci]}${(c.team1.length===1&&c.team2.length===1)?' 단식':''}</span>
-          <div class="team team1">${c.team1.map(id=>`<span class="player-chip">${getName(id)}</span>`).join('')}</div>
+          <div class="team team1">${c.team1.map((id,pi)=>{
+            const sel=swapSel&&swapSel.key==='c-'+idx+'-'+ci+'-0-'+pi;
+            return`<span class="player-chip${sel?' swap-sel':''}" onclick="pickSwap(${idx},${ci},0,${pi})">${getName(id)}</span>`;
+          }).join('')}</div>
           <span class="vs">vs</span>
-          <div class="team team2">${c.team2.map(id=>`<span class="player-chip">${getName(id)}</span>`).join('')}</div>
+          <div class="team team2">${c.team2.map((id,pi)=>{
+            const sel=swapSel&&swapSel.key==='c-'+idx+'-'+ci+'-1-'+pi;
+            return`<span class="player-chip${sel?' swap-sel':''}" onclick="pickSwap(${idx},${ci},1,${pi})">${getName(id)}</span>`;
+          }).join('')}</div>
         </div>`).join('');
       const sitters=slot.sitters||[];
       if(sitters.length){
-        body+=`<div class="sitters-row"><span class="label">대기</span>${sitters.map(id=>`<span class="sitter-chip">${getName(id)}</span>`).join('')}</div>`;
+        body+=`<div class="sitters-row"><span class="label">대기</span>${sitters.map((id,si)=>{
+          const sel=swapSel&&swapSel.key==='s-'+idx+'-'+si;
+          return`<span class="sitter-chip${sel?' swap-sel':''}" onclick="pickSitterSwap(${idx},${si})">${getName(id)}</span>`;
+        }).join('')}</div>`;
       }
     }else{
       body=`<div class="slot-empty">배정 버튼을 눌러주세요</div>`;
     }
+    const cancelBtn=isSwapActive
+      ?`<button onclick="cancelSwap()" style="font-size:11px;color:var(--orange);border:1px solid var(--orange);background:rgba(249,115,22,.1);border-radius:10px;padding:2px 8px;font-weight:700;margin-right:6px">↕ 취소</button>`
+      :'';
     return`<div class="slot-card">
       <div class="slot-header">
         <div class="slot-header-left">
@@ -399,7 +497,7 @@ function renderSlots(){
           <span class="slot-time">${slot.time}</span>
           <span class="slot-avail">${avail.length}명</span>
         </div>
-        <button class="btn-assign" onclick="generateSlot(${idx})">${slot.courts?'재배정':'배정'}</button>
+        <div style="display:flex;align-items:center">${cancelBtn}<button class="btn-assign" onclick="generateSlot(${idx})">${slot.courts?'재배정':'배정'}</button></div>
       </div>
       <div class="slot-body">${body}</div>
     </div>`;
@@ -410,7 +508,6 @@ function renderPlayers(){
   const list=document.getElementById('players-list');
   const arrOpts=getArriveOptions();const depOpts=getDepartOptions();
 
-  // Update add-row selects
   const arrSel=document.getElementById('arrive-select');
   const depSel=document.getElementById('depart-select');
   const curArr=arrSel.value;const curDep=depSel.value;
@@ -437,7 +534,7 @@ function renderPlayers(){
   }).join('');
 }
 
-// Summary
+// ─── Summary ─────────────────────────────────────────────────────────────────
 function renderSummary(){
   const assigned=state.slots.filter(s=>s.courts);
   if(!assigned.length){document.getElementById('summary-body').innerHTML='<div style="text-align:center;padding:30px;color:#bbb">먼저 매치를 배정해주세요</div>';return;}
@@ -472,25 +569,32 @@ function renderSummary(){
     html+='</tr>';
   });
   html+='</tbody></table>';
+
+  // ─ 인원별 게임수 ─
+  const participants=state.players.filter(p=>p.present||p.playCount>0);
+  if(participants.length){
+    const sorted=[...participants].sort((a,b)=>b.playCount-a.playCount||a.name.localeCompare(b.name,'ko'));
+    html+='<div style="margin-top:20px;padding-top:16px;border-top:2px solid #eee">';
+    html+='<div style="font-size:14px;font-weight:800;margin-bottom:10px">인원별 게임수</div>';
+    html+='<div class="count-grid">';
+    sorted.forEach(p=>{
+      html+=`<div class="count-chip"><span class="cname">${p.name}</span><span class="cgames${p.playCount===0?' zero':''}">${p.playCount}게임</span></div>`;
+    });
+    html+='</div></div>';
+  }
+
   document.getElementById('summary-body').innerHTML=html;
 }
 
 // Settings
 function openSettings(){
   const m=document.getElementById('settings-modal');m.classList.add('show');
-  [6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23].forEach(h=>{
-    ['set-start-h','set-end-h'].forEach(id=>{
-      const sel=document.getElementById(id);
-      if(!sel.querySelector(`option[value="${h}"]`))sel.innerHTML+= `<option value="${h}">${h}시</option>`;
-    });
-  });
   document.getElementById('set-start-h').innerHTML=[6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23].map(h=>`<option value="${h}"${h===state.startHour?' selected':''}>${h}시</option>`).join('');
   document.getElementById('set-start-m').innerHTML=[0,30].map(m=>`<option value="${m}"${m===state.startMinute?' selected':''}>${pad(m)}분</option>`).join('');
   document.getElementById('set-end-h').innerHTML=[6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23].map(h=>`<option value="${h}"${h===state.endHour?' selected':''}>${h}시</option>`).join('');
   document.getElementById('set-end-m').innerHTML=[0,30].map(m=>`<option value="${m}"${m===state.endMinute?' selected':''}>${pad(m)}분</option>`).join('');
-
   const picker=document.getElementById('court-picker');
-  picker.innerHTML=[1,2,3,4,5].map(n=>`<button class="${n===state.courtCount?'active':''}" onclick="document.querySelectorAll('.court-picker button').forEach(b=>b.classList.remove('active'));this.classList.add('active');this.dataset.v='${n}'"data-v="${n}">${n}개</button>`).join('');
+  picker.innerHTML=[1,2,3,4,5].map(n=>`<button class="${n===state.courtCount?'active':''}" onclick="document.querySelectorAll('.court-picker button').forEach(b=>b.classList.remove('active'));this.classList.add('active')" data-v="${n}">${n}개</button>`).join('');
   updateSlotCountInfo();
 }
 function updateSlotCountInfo(){
@@ -539,6 +643,7 @@ document.getElementById('set-end-h')?.addEventListener('change',updateSlotCountI
 document.getElementById('set-end-m')?.addEventListener('change',updateSlotCountInfo);
 
 if(!state.slots||!state.slots.length)state.slots=buildSlots(state);
+updatePlayCounts(); // 저장된 슬롯 데이터로 게임수 초기화
 renderAll();
 </script>
 </body>
